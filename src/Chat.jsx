@@ -12,7 +12,7 @@ export default function Chat() {
   const [llamadaEntrante, setLlamadaEntrante] = useState(null);
   const [llamadaActiva, setLlamadaActiva] = useState(false);
   const [llamandoA, setLlamandoA] = useState(null);
-  const [audioListo, setAudioListo] = useState(false); // Para iOS
+  const [audioListo, setAudioListo] = useState(false);
 
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -28,32 +28,26 @@ export default function Chat() {
     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     peerConnectionRef.current = pc;
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStreamRef.current = stream;
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-      pc.ontrack = (event) => {
-        remoteAudioRef.current.srcObject = event.streams[0];
-        if (audioListo) remoteAudioRef.current.play().catch(() => {});
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) socket.emit("iceCandidate", { to: remoteId, candidate: event.candidate });
-      };
-
-      pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed" || pc.iceConnectionState === "closed") {
-          colgar();
-        }
-      };
-
-      return pc;
-    } catch (error) {
-      console.error("Error al obtener el stream de audio:", error);
-      peerConnectionRef.current = null;
-      return null;
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => pc.addTrack(track, localStreamRef.current));
     }
+
+    pc.ontrack = (event) => {
+      remoteAudioRef.current.srcObject = event.streams[0];
+      if (audioListo) remoteAudioRef.current.play().catch(() => {});
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) socket.emit("iceCandidate", { to: remoteId, candidate: event.candidate });
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (["disconnected", "failed", "closed"].includes(pc.iceConnectionState)) {
+        colgar();
+      }
+    };
+
+    return pc;
   }, [audioListo]);
 
   const colgar = useCallback(() => {
@@ -81,18 +75,20 @@ export default function Chat() {
     }
   }, [crearPeerConnection]);
 
-  // --- Pedir nombre una sola vez ---
-  useEffect(() => {
-    let user = localStorage.getItem("nombre");
-    if (!user) {
-      user = prompt("Ingresa tu nombre:");
-      localStorage.setItem("nombre", user);
+  // --- Activar audio en iOS ---
+  const habilitarAudio = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = stream;
+      setAudioListo(true);
+      if (peerConnectionRef.current) {
+        stream.getTracks().forEach(track => peerConnectionRef.current.addTrack(track, stream));
+      }
+      if (remoteAudioRef.current) remoteAudioRef.current.play().catch(() => {});
+    } catch (err) {
+      console.error("No se pudo activar el micrófono:", err);
     }
-    setNombre(user);
-    socket.emit("nuevoUsuario", user);
-
-    if (Notification.permission !== "granted") Notification.requestPermission();
-  }, []);
+  };
 
   // --- Socket.io ---
   useEffect(() => {
@@ -154,18 +150,22 @@ export default function Chat() {
     } else colgar();
   };
 
-  // --- Botón para habilitar audio en iOS ---
-  const habilitarAudio = () => {
-    setAudioListo(true);
-    if (remoteAudioRef.current) remoteAudioRef.current.play().catch(() => {});
-  };
-
   const otrosUsuarios = usuarios.filter((u) => u.nombre !== nombre);
+
+  // --- UI ---
+  if (!nombre) {
+    return (
+      <div style={{ textAlign: "center", marginTop: 50 }}>
+        <h2>Ingresa tu nombre</h2>
+        <input type="text" onChange={(e) => setNombre(e.target.value)} placeholder="Nombre" />
+        <button onClick={() => { localStorage.setItem("nombre", nombre); socket.emit("nuevoUsuario", nombre); }} style={{ marginLeft: 5 }}>Entrar</button>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>
       <h2 style={styles.header}>Chat JS</h2>
-
       <div style={styles.chatBox}>
         {mensajes.map((m, i) => (
           <div key={i} style={{ margin: 5, color: m.usuario === nombre ? "blue" : "black" }}>
@@ -176,13 +176,7 @@ export default function Chat() {
       </div>
 
       <div style={styles.inputContainer}>
-        <input
-          value={mensaje}
-          onChange={(e) => setMensaje(e.target.value)}
-          placeholder="Escribe tu mensaje..."
-          onKeyDown={(e) => e.key === "Enter" && enviarMensaje()}
-          style={styles.input}
-        />
+        <input value={mensaje} onChange={(e) => setMensaje(e.target.value)} placeholder="Escribe tu mensaje..." onKeyDown={(e) => e.key === "Enter" && enviarMensaje()} style={styles.input} />
         <button onClick={enviarMensaje} style={styles.button}>Enviar</button>
       </div>
 
@@ -225,11 +219,7 @@ export default function Chat() {
       )) : <p>No hay otros usuarios conectados.</p>}
 
       <audio ref={remoteAudioRef} autoPlay />
-
-      <style>{`
-        .spinner { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
+      <style>{`.spinner { animation: spin 1s linear infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

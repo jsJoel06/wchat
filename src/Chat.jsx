@@ -5,9 +5,10 @@ import { FiPhone, FiPhoneOff, FiLoader } from "react-icons/fi";
 const socket = io("https://chat-3syl.onrender.com", { transports: ["websocket"] });
 
 export default function Chat() {
+  const [nombre, setNombre] = useState("");        // Nombre confirmado
+  const [nombreTemp, setNombreTemp] = useState(""); // Nombre que escribe el usuario
   const [mensaje, setMensaje] = useState("");
   const [mensajes, setMensajes] = useState([]);
-  const [nombre, setNombre] = useState("");
   const [usuarios, setUsuarios] = useState([]);
   const [llamadaEntrante, setLlamadaEntrante] = useState(null);
   const [llamadaActiva, setLlamadaActiva] = useState(false);
@@ -75,7 +76,6 @@ export default function Chat() {
     }
   }, [crearPeerConnection]);
 
-  // --- Activar audio en iOS ---
   const habilitarAudio = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -92,7 +92,11 @@ export default function Chat() {
 
   // --- Socket.io ---
   useEffect(() => {
-    socket.on("mensaje", (msg) => { setMensajes((prev) => [...prev, msg]); scrollToBottom(); });
+    if (!nombre) return;
+
+    socket.emit("nuevoUsuario", nombre);
+
+    socket.on("mensaje", (msg) => { setMensajes(prev => [...prev, msg]); scrollToBottom(); });
     socket.on("usuariosConectados", setUsuarios);
 
     socket.on("llamadaEntrante", ({ de, nombre }) => {
@@ -123,7 +127,7 @@ export default function Chat() {
     });
 
     return () => socket.off();
-  }, [llamadaActiva, llamandoA, crearPeerConnection]);
+  }, [nombre, llamadaActiva, llamandoA, crearPeerConnection]);
 
   // --- UI Handlers ---
   const enviarMensaje = () => {
@@ -152,17 +156,23 @@ export default function Chat() {
 
   const otrosUsuarios = usuarios.filter((u) => u.nombre !== nombre);
 
-  // --- UI ---
+  // --- UI de login ---
   if (!nombre) {
     return (
       <div style={{ textAlign: "center", marginTop: 50 }}>
         <h2>Ingresa tu nombre</h2>
-        <input type="text" onChange={(e) => setNombre(e.target.value)} placeholder="Nombre" />
-        <button onClick={() => { localStorage.setItem("nombre", nombre); socket.emit("nuevoUsuario", nombre); }} style={{ marginLeft: 5 }}>Entrar</button>
+        <input
+          type="text"
+          value={nombreTemp}
+          onChange={(e) => setNombreTemp(e.target.value)}
+          placeholder="Nombre"
+        />
+        <button onClick={() => { if (nombreTemp.trim()) setNombre(nombreTemp.trim()); }} style={{ marginLeft: 5 }}>Entrar</button>
       </div>
     );
   }
 
+  // --- UI de chat ---
   return (
     <div style={styles.container}>
       <h2 style={styles.header}>Chat JS</h2>
@@ -176,7 +186,13 @@ export default function Chat() {
       </div>
 
       <div style={styles.inputContainer}>
-        <input value={mensaje} onChange={(e) => setMensaje(e.target.value)} placeholder="Escribe tu mensaje..." onKeyDown={(e) => e.key === "Enter" && enviarMensaje()} style={styles.input} />
+        <input
+          value={mensaje}
+          onChange={(e) => setMensaje(e.target.value)}
+          placeholder="Escribe tu mensaje..."
+          onKeyDown={(e) => e.key === "Enter" && enviarMensaje()}
+          style={styles.input}
+        />
         <button onClick={enviarMensaje} style={styles.button}>Enviar</button>
       </div>
 
@@ -219,7 +235,10 @@ export default function Chat() {
       )) : <p>No hay otros usuarios conectados.</p>}
 
       <audio ref={remoteAudioRef} autoPlay />
-      <style>{`.spinner { animation: spin 1s linear infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        .spinner { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 }

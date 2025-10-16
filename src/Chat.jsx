@@ -16,6 +16,7 @@ export default function Chat() {
   useEffect(() => {
     const user = prompt("Ingresa tu nombre:") || "Usuario";
     setNombre(user);
+    socket.emit("nuevoUsuario", user);
   }, []);
 
   // Hacer scroll al final
@@ -28,7 +29,7 @@ export default function Chat() {
     socket.on("mensaje", (msg) => {
       setMensajes((prev) => [...prev, msg]);
       scrollToBottom();
-      console.log("Mensaje recibido:", msg); // debug en consola
+      console.log("Mensaje recibido:", msg);
     });
 
     return () => socket.disconnect();
@@ -37,12 +38,9 @@ export default function Chat() {
   const enviarMensaje = () => {
     if (!mensaje.trim()) return;
 
-    // Mostrar en chat inmediatamente (optimista)
-    setMensajes((prev) => [...prev, `${nombre}: ${mensaje}`]);
-
-    // Enviar al backend
-    socket.emit("mensaje", { usuario: nombre, texto: mensaje });
-
+    const msgObj = { usuario: nombre, texto: mensaje };
+    setMensajes((prev) => [...prev, msgObj]); // Mostrar inmediatamente
+    socket.emit("mensaje", msgObj); // Enviar al backend
     setMensaje("");
     scrollToBottom();
   };
@@ -51,31 +49,25 @@ export default function Chat() {
     <div style={styles.container}>
       <h2 style={styles.header}>Chat JS</h2>
       <div style={styles.chatBox}>
-        {mensajes.map((m, i) => (
-          <div
-            key={i}
-            style={{
-              ...styles.mensaje,
-              alignSelf: m.startsWith("⚡") || m.startsWith("❌")
-                ? "center"
-                : m.startsWith(`${nombre}:`)
-                ? "flex-end"
-                : "flex-start",
-              backgroundColor: m.startsWith("⚡") || m.startsWith("❌")
-                ? "#f9f9f9"
-                : m.startsWith(`${nombre}:`)
-                ? "#4CAF50"
-                : "#f1f0f0",
-              color: m.startsWith("⚡") || m.startsWith("❌")
-                ? "#888"
-                : m.startsWith(`${nombre}:`)
-                ? "#fff"
-                : "#000",
-            }}
-          >
-            {m}
-          </div>
-        ))}
+        {mensajes.map((m, i) => {
+          const esSistema = m.usuario === "Sistema";
+          const esYo = m.usuario === nombre;
+
+          return (
+            <div
+              key={i}
+              style={{
+                ...styles.mensaje,
+                alignSelf: esSistema ? "center" : esYo ? "flex-end" : "flex-start",
+                backgroundColor: esSistema ? "#f9f9f9" : esYo ? "#4CAF50" : "#f1f0f0",
+                color: esSistema ? "#888" : esYo ? "#fff" : "#000",
+              }}
+            >
+              {!esSistema && !esYo && <strong>{m.usuario}: </strong>}
+              {m.texto}
+            </div>
+          );
+        })}
         <div ref={mensajesEndRef} />
       </div>
       <div style={styles.inputContainer}>
@@ -97,9 +89,9 @@ export default function Chat() {
 
 const styles = {
   container: {
-    maxWidth: "500px",
-    margin: "50px auto",
-    padding: "20px",
+    maxWidth: "600px",
+    margin: "20px auto",
+    padding: "15px",
     fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
     borderRadius: "10px",
     boxShadow: "0px 5px 20px rgba(0,0,0,0.2)",
@@ -107,11 +99,11 @@ const styles = {
   },
   header: {
     textAlign: "center",
-    marginBottom: "20px",
+    marginBottom: "15px",
     color: "#333",
   },
   chatBox: {
-    height: "400px",
+    height: "60vh",
     overflowY: "auto",
     display: "flex",
     flexDirection: "column",
@@ -124,12 +116,14 @@ const styles = {
     padding: "10px 15px",
     margin: "5px 0",
     borderRadius: "20px",
-    maxWidth: "70%",
+    maxWidth: "75%",
     wordWrap: "break-word",
+    boxShadow: "0px 2px 5px rgba(0,0,0,0.1)",
   },
   inputContainer: {
     display: "flex",
-    marginTop: "15px",
+    marginTop: "10px",
+    gap: "10px",
   },
   input: {
     flex: 1,
@@ -137,7 +131,7 @@ const styles = {
     borderRadius: "20px",
     border: "1px solid #ccc",
     outline: "none",
-    marginRight: "10px",
+    fontSize: "1rem",
   },
   button: {
     padding: "10px 20px",
@@ -147,5 +141,28 @@ const styles = {
     color: "#fff",
     cursor: "pointer",
     fontWeight: "bold",
+    fontSize: "1rem",
+  },
+
+  // Media queries para móviles
+  "@media (max-width: 480px)": {
+    container: {
+      margin: "10px",
+      padding: "10px",
+    },
+    chatBox: {
+      height: "50vh",
+    },
+    mensaje: {
+      maxWidth: "90%",
+      fontSize: "0.9rem",
+    },
+    input: {
+      fontSize: "0.9rem",
+    },
+    button: {
+      fontSize: "0.9rem",
+      padding: "8px 15px",
+    },
   },
 };

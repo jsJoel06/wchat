@@ -1,11 +1,10 @@
+// src/Chat.jsx
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { io } from "socket.io-client";
 import { FiPhone, FiPhoneOff, FiSend } from "react-icons/fi";
 
 // --- Ajusta URL si tu backend está en otra ruta ---
-const socket = io("https://chat-3syl.onrender.com", {
-  transports: ["websocket"],
-});
+const socket = io("http://localhost:3001", { transports: ["websocket"] });
 
 export default function Chat() {
   const [usuario, setUsuario] = useState(null);
@@ -28,6 +27,7 @@ export default function Chat() {
   const ringtoneRef = useRef(null);
   const intervaloLlamadaRef = useRef(null);
 
+  // ----------- Efectos iniciales -----------
   useEffect(() => {
     ringtoneRef.current = new Audio("/ringtone.mp3");
     ringtoneRef.current.preload = "auto";
@@ -37,20 +37,15 @@ export default function Chat() {
 
     socket.on("usuariosConectados", (lista) => setUsuarios(lista));
 
-    socket.on("llamadaEntrante", ({ de, nombre }) => {
-      setLlamadaEntrante({ de, nombre });
+    socket.on("llamadaEntrante", ({ de, nombre, offer }) => {
+      setLlamadaEntrante({ de, nombre, offer });
       ringtoneRef.current.play().catch(() => {});
     });
 
-    socket.on("ofertaLlamada", async ({ from, offer }) => {
-      await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await peerConnectionRef.current.createAnswer();
-      await peerConnectionRef.current.setLocalDescription(answer);
-      socket.emit("respuestaWebRTC", { to: from, answer });
-    });
-
     socket.on("respuestaWebRTC", async ({ answer }) => {
-      await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+      if (peerConnectionRef.current) {
+        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+      }
     });
 
     socket.on("iceCandidate", ({ candidate }) => {
@@ -63,14 +58,15 @@ export default function Chat() {
       socket.off("mensaje");
       socket.off("usuariosConectados");
       socket.off("llamadaEntrante");
-      socket.off("ofertaLlamada");
       socket.off("respuestaWebRTC");
       socket.off("iceCandidate");
     };
   }, []);
 
+  // ----------- Funciones auxiliares -----------
   const scrollToBottom = () =>
     mensajesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+
   const formatearTiempo = (seg) => {
     const h = Math.floor(seg / 3600);
     const m = Math.floor((seg % 3600) / 60);
@@ -107,21 +103,17 @@ export default function Chat() {
     }
   };
 
+  // ----------- Llamadas -----------
   const iniciarLlamada = async (usuarioDestino) => {
     if (!audioListo) await habilitarAudio();
 
     const pc = new RTCPeerConnection();
     peerConnectionRef.current = pc;
 
-    // Agregar audio local
     localStreamRef.current.getTracks().forEach((t) => pc.addTrack(t, localStreamRef.current));
-
-    // Recibir audio remoto
     pc.ontrack = (event) => {
       remoteAudioRef.current.srcObject = event.streams[0];
     };
-
-    // ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate)
         socket.emit("iceCandidate", { to: usuarioDestino.id, candidate: event.candidate });
@@ -132,6 +124,7 @@ export default function Chat() {
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+
     socket.emit("ofertaLlamada", { to: usuarioDestino.id, offer });
   };
 
@@ -142,15 +135,18 @@ export default function Chat() {
     peerConnectionRef.current = pc;
 
     localStreamRef.current.getTracks().forEach((t) => pc.addTrack(t, localStreamRef.current));
-
     pc.ontrack = (event) => {
       remoteAudioRef.current.srcObject = event.streams[0];
     };
-
     pc.onicecandidate = (event) => {
       if (event.candidate)
         socket.emit("iceCandidate", { to: llamadaEntrante.de, candidate: event.candidate });
     };
+
+    await pc.setRemoteDescription(new RTCSessionDescription(llamadaEntrante.offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    socket.emit("respuestaWebRTC", { to: llamadaEntrante.de, answer });
 
     setLlamandoA({ id: llamadaEntrante.de });
     setLlamadaActiva(true);
@@ -184,7 +180,7 @@ export default function Chat() {
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
-  // ----------- Login UI ----------
+  // ---------------- Login UI ----------------
   if (!usuario) {
     return (
       <div style={UI.loginBackground}>
@@ -230,7 +226,7 @@ export default function Chat() {
     );
   }
 
-  // ----------- Chat principal UI ----------
+  // ---------------- Chat UI ----------------
   return (
     <div style={UI.app}>
       {/* Sidebar */}
@@ -250,22 +246,19 @@ export default function Chat() {
           </div>
 
           <div style={UI.userList}>
-            {usuarios.map((u) => (
-              <div key={u.id} style={UI.userRow}>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <div style={UI.avatarSmall}>{u.nombre.charAt(0).toUpperCase()}</div>
-                  <div>
+            {usuarios
+              .filter((u) => u.id !== usuariosConectados[socket.id])
+              .map((u) => (
+                <div key={u.id} style={UI.userRow}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <div style={UI.avatarSmall}>{u.nombre.charAt(0).toUpperCase()}</div>
                     <div style={{ fontWeight: 600 }}>{u.nombre}</div>
                   </div>
+                  <button onClick={() => iniciarLlamada(u)} style={UI.callBtn}>
+                    <FiPhone />
+                  </button>
                 </div>
-                <button
-                  onClick={() => iniciarLlamada(u)}
-                  style={UI.callBtn}
-                >
-                  <FiPhone />
-                </button>
-              </div>
-            ))}
+              ))}
           </div>
         </aside>
       )}
@@ -280,9 +273,7 @@ export default function Chat() {
         <div style={UI.chatHeader}>
           <div style={{ fontWeight: 700 }}>Sala pública</div>
           <div style={{ color: "#888" }}>
-            {llamadaActiva
-              ? `Llamada: ${formatearTiempo(duracionLlamada)}`
-              : "Estado: disponible"}
+            {llamadaActiva ? `Llamada: ${formatearTiempo(duracionLlamada)}` : "Estado: disponible"}
           </div>
         </div>
 
@@ -292,10 +283,7 @@ export default function Chat() {
             return (
               <div
                 key={i}
-                style={{
-                  display: "flex",
-                  justifyContent: mine ? "flex-end" : "flex-start",
-                }}
+                style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}
               >
                 <div
                   style={{
@@ -334,9 +322,7 @@ export default function Chat() {
       {llamadaEntrante && !llamadaActiva && (
         <div style={UI.incoming}>
           <div style={UI.incomingCard}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>
-              {llamadaEntrante.nombre}
-            </div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>{llamadaEntrante.nombre}</div>
             <div style={{ marginBottom: 12, color: "#666" }}>Te está llamando</div>
             <div style={{ display: "flex", gap: 10 }}>
               <button style={UI.acceptBtn} onClick={aceptarLlamada}>
@@ -352,6 +338,7 @@ export default function Chat() {
     </div>
   );
 }
+
 
 // ============================
 // ESTILOS (los mismos que tenías)

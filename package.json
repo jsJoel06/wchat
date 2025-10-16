@@ -1,0 +1,25 @@
+{
+  "name": "react-chat",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react-swc": "^3.9.0",
+    "@types/react": "^18.2.7",
+    "@types/react-dom": "^18.2.4",
+    "eslint": "^9.25.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "vite": "^6.3.5"
+  }
+}

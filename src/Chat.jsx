@@ -9,15 +9,22 @@ const socket = io("https://chat-3syl.onrender.com", {
 export default function Chat() {
   const [mensaje, setMensaje] = useState("");
   const [mensajes, setMensajes] = useState([]);
+  const [nombre, setNombre] = useState("");
   const mensajesEndRef = useRef(null);
+
+  // Pedir nombre al inicio
+  useEffect(() => {
+    const user = prompt("Ingresa tu nombre:") || "Usuario";
+    setNombre(user);
+  }, []);
 
   // Hacer scroll al final
   const scrollToBottom = () => {
     mensajesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // Escuchar mensajes del backend
   useEffect(() => {
-    // Recibir mensajes del servidor
     socket.on("mensaje", (msg) => {
       setMensajes((prev) => [...prev, msg]);
       scrollToBottom();
@@ -31,16 +38,14 @@ export default function Chat() {
     if (!mensaje.trim()) return;
 
     // Mostrar en chat inmediatamente (optimista)
-    setMensajes((prev) => [...prev, `Tú: ${mensaje}`]);
+    setMensajes((prev) => [...prev, `${nombre}: ${mensaje}`]);
 
     // Enviar al backend
-    socket.emit("mensaje", mensaje);
+    socket.emit("mensaje", { usuario: nombre, texto: mensaje });
 
     setMensaje("");
     scrollToBottom();
   };
-
- 
 
   return (
     <div style={styles.container}>
@@ -51,9 +56,21 @@ export default function Chat() {
             key={i}
             style={{
               ...styles.mensaje,
-              alignSelf: m.startsWith("⚡") || m.startsWith("❌") ? "center" : m.startsWith("Tú:") ? "flex-end" : "flex-start",
-              backgroundColor: m.startsWith("⚡") || m.startsWith("❌") ? "#f9f9f9" : m.startsWith("Tú:") ? "#4CAF50" : "#f1f0f0",
-              color: m.startsWith("⚡") || m.startsWith("❌") ? "#888" : m.startsWith("Tú:") ? "#fff" : "#000",
+              alignSelf: m.startsWith("⚡") || m.startsWith("❌")
+                ? "center"
+                : m.startsWith(`${nombre}:`)
+                ? "flex-end"
+                : "flex-start",
+              backgroundColor: m.startsWith("⚡") || m.startsWith("❌")
+                ? "#f9f9f9"
+                : m.startsWith(`${nombre}:`)
+                ? "#4CAF50"
+                : "#f1f0f0",
+              color: m.startsWith("⚡") || m.startsWith("❌")
+                ? "#888"
+                : m.startsWith(`${nombre}:`)
+                ? "#fff"
+                : "#000",
             }}
           >
             {m}
